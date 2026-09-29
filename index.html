@@ -7,9 +7,25 @@
 .notice{font-size:24px;font-weight:950;text-align:center;color:#f3c34d;min-height:30px}
 .bigcount{font-size:34px;font-weight:900;text-align:center}
 .playable{outline:3px solid #f3c34d}
+
+.shameTitle{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.shameGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+.shameBox{background:#123729;border:1px solid #4c7866;border-radius:12px;padding:9px;text-align:center}
+.shameBox b{display:block;font-size:14px;margin-bottom:4px}
+.shameLeaders{margin-top:8px;text-align:center;font-weight:850;color:#f3c34d}
+.eventOverlay{position:fixed;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(4,18,13,.72);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.eventCard{width:min(92vw,430px);border:2px solid #f3c34d;border-radius:26px;background:#174332;padding:24px 18px;text-align:center;box-shadow:0 18px 60px rgba(0,0,0,.45);animation:eventPop .3s ease-out}
+.eventEmoji{font-size:72px;line-height:1}
+.eventTitle{font-size:30px;font-weight:1000;margin-top:8px;color:#f3c34d}
+.eventText{font-size:18px;font-weight:800;margin-top:7px}
+.eventSub{font-size:13px;color:#d2e2da;margin-top:8px}
+.hogMoment .eventCard{animation:eventPop .3s ease-out,hogShake .22s linear 4}
+@keyframes eventPop{from{transform:scale(.72);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes hogShake{25%{transform:translateX(-7px)}75%{transform:translateX(7px)}}
+
 </style></head><body><div class="wrap">
 <div id="lobby" class="panel lobby">
-<h2 style="margin:0">🇹🇹 Whole Hog Hearts 🇧🇧</h2><div class="small">The Trini-Bim Version • Online • V1.4</div><div id="fb" class="small">🟡 Connecting…</div>
+<h2 style="margin:0">🇹🇹 Whole Hog Hearts 🇧🇧</h2><div class="small">The Trini-Bim Version • Online • V1.7</div><div id="fb" class="small">🟡 Connecting…</div>
 <div style="margin-top:14px"><b>Your nickname</b></div><input id="nickname" class="field" maxlength="18" placeholder="Enter your name">
 <div class="lobbyBtns"><button id="practiceBtn" class="primary">Practice</button><button id="createBtn">Create Private Table</button></div>
 <div style="margin-top:14px"><b>Join a private table</b></div><input id="joinCode" class="field" maxlength="6" autocapitalize="characters" placeholder="6-character table code">
@@ -25,7 +41,8 @@
 <div id="table" class="table"><div class="north" id="n"></div><div class="west" id="w"></div><div class="east" id="e"></div><div class="center"><div id="trick" class="trick"></div></div><div class="south" id="south"></div></div>
 <div class="panel"><div class="top"><b>Your hand</b><span id="handCount"></span></div><div id="instruction" class="small"></div><div id="hand" class="hand"></div>
 <div class="actions" style="justify-content:center;margin-top:12px"><button id="passBtn" class="primary hidden">Pass 3 Left</button></div></div>
-<div class="panel"><b>Shame Board</b><div id="shame" class="small" style="margin-top:7px"></div></div></div></div>
+<div class="panel"><div class="shameTitle"><b>Shame Board</b><span class="small">🐷 Whole Hogs • 🐦 Birds</span></div><div id="shame"></div></div></div></div>
+<div id="eventOverlay" class="eventOverlay hidden"><div class="eventCard"><div id="eventEmoji" class="eventEmoji"></div><div id="eventTitle" class="eventTitle"></div><div id="eventText" class="eventText"></div><div id="eventSub" class="eventSub"></div></div></div>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script>
@@ -33,7 +50,7 @@ const firebaseConfig={apiKey:"AIzaSyCokTiJ2ysRppco5kjW_eM_DeKu9kQwxvE",authDomai
 firebase.initializeApp(firebaseConfig);const db=firebase.database(),$=x=>document.getElementById(x);
 const suits=['C','D','S','H'],sy={C:'♣',D:'♦',S:'♠',H:'♥'},id=c=>c.s+c.r,pts=c=>c.s==='S'&&c.r===12?25:c.s==='H'?(c.r>=10?10:c.r):0,label=c=>(c.r===14?'A':c.r===13?'K':c.r===12?'Q':c.r===11?'J':c.r)+sy[c.s];
 const pid=localStorage.getItem('whhPid')||('p_'+Math.random().toString(36).slice(2)+Date.now().toString(36));localStorage.setItem('whhPid',pid);$('nickname').value=localStorage.getItem('whhNick')||'';
-let connected=false,room=null,isHost=false,mySeat=-1,latest=null,selected=[],roomCb=null,uiTick=null,automationBusy=false;
+let connected=false,room=null,isHost=false,mySeat=-1,latest=null,selected=[],roomCb=null,uiTick=null,automationBusy=false,lastEventKey='',eventTimer=null;
 db.ref('.info/connected').on('value',s=>{connected=!!s.val();$('fb').textContent=connected?'🟢 Online multiplayer service connected':'🟡 Connecting…'});
 function deck(){return suits.flatMap(s=>Array.from({length:13},(_,i)=>({s,r:i+2})))}
 function shuffle(a){a=a.slice();for(let i=a.length-1;i;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
@@ -59,13 +76,31 @@ $('score').innerHTML=[0,1,2,3].map(r=>{let a=abs(r);return `<div class="panel"><
 [['w',1],['n',2],['e',3]].forEach(([el,r])=>{let a=abs(r);$(el).innerHTML=`<b>${esc(seats[a].name)}</b><br><span class="small">${s.hands[a].length} cards • ${sumPts(s.taken?.[a])} pts</span>`});
 $('south').innerHTML=`<b>${esc(seats[mySeat].name)}</b><br><span class="small">${s.hands[mySeat].length} cards • ${sumPts(s.taken?.[mySeat])} pts</span>`;
 $('trick').innerHTML=((s.phase==='resolving'&&Array.isArray(s.displayTrick)&&s.displayTrick.length===4)?s.displayTrick:(s.trick||[])).slice(0,4).map(x=>{let rel=(x.p-mySeat+4)%4,pos=['s','w','n','e'][rel];return `<div class="trickplay trick-${pos}"><div class="small">${esc(seats[x.p].name)}</div><div class="card ${(x.c.s==='H'||x.c.s==='D')?'red':''}">${label(x.c)}</div></div>`}).join('');
-$('shame').innerHTML=seats.map((x,i)=>`${esc(x.name)}: 🐷 ${s.hogs[i]||0} • 🐦 ${s.birds[i]||0}`).join('<br>');
+renderShame(s,seats);
 let h=s.hands[mySeat]||[];$('handCount').textContent=h.length+' cards';$('hand').innerHTML='';h.forEach((c,i)=>{let b=document.createElement('button');b.className='card '+((c.s==='H'||c.s==='D')?'red ':'')+(selected.includes(i)?'selected ':'');b.innerHTML=`<span>${label(c).slice(0,-1)}</span><span class="suit">${sy[c.s]}</span>`;if(s.phase==='pass'&&!s.passes?.[mySeat])b.onclick=()=>{let k=selected.indexOf(i);if(k>=0)selected.splice(k,1);else if(selected.length<3)selected.push(i);resetPassActivity();render(g)};else if(s.phase==='play'&&s.turn===mySeat&&legal(h,s.lead).includes(i)){b.className+=' playable';b.onclick=()=>requestPlay(i)}else b.disabled=true;$('hand').appendChild(b)});
 $('passBtn').classList.toggle('hidden',s.phase!=='pass'||!!s.passes?.[mySeat]);$('passBtn').disabled=selected.length!==3;
 if(s.phase==='pass'){let pa=Number(s.passActivity?.[mySeat]||s.passStartedAt||Date.now()),elapsed=(Date.now()-pa)/1000,left=Math.max(0,10-Math.floor(elapsed));$('turnNotice').textContent=s.passes?.[mySeat]?'':(elapsed>=5?'Pass!':'PASS • '+left+'s');$('status').textContent=s.passes?.[mySeat]?'Waiting for passes…':'Select 3 cards to pass left.';$('instruction').textContent='Each selection resets the inactivity timer. Received cards stay hidden until your own pass is committed.'}
 else if(s.phase==='play'){let validTurn=Number.isInteger(s.turn)&&s.turn>=0&&s.turn<4;if(!validTurn){$('turnNotice').textContent='';$('status').textContent='Resolving trick…';$('instruction').textContent='Please wait.'}else{let elapsed=(Date.now()-(s.turnStartedAt||Date.now()))/1000,left=Math.max(0,10-Math.floor(elapsed)),mine=s.turn===mySeat;$('turnNotice').textContent=mine?(elapsed>=5?'Play!':'YOUR TURN • '+left+'s'):esc(seats[s.turn].name)+' • '+left+'s';$('status').textContent=mine?'Your turn.':seats[s.turn].name+"'s turn.";$('instruction').textContent=mine?'Follow suit if you can.':'Waiting…'}}
 else if(s.phase==='resolving'){$('turnNotice').textContent='';$('status').textContent='Resolving trick…';$('instruction').textContent='Please wait.'}
-else{$('turnNotice').textContent='';$('status').textContent=s.roundMessage||'Round complete.';$('instruction').textContent=s.phase==='over'?'Game complete.':'Next round starts automatically.'}}
+else{$('turnNotice').textContent='';$('status').textContent=s.roundMessage||'Round complete.';$('instruction').textContent=s.phase==='over'?'Game complete.':'Next round starts automatically.';if(s.phase==='roundEnd'){let hog=s.hogs.map((_,i)=>i).find(i=>s.roundMessage&&s.roundMessage.includes('WHOLE HOG')&&s.roundMessage.includes(seats[i].name));if(hog!==undefined)showGameEvent('hog',seats[hog].name,s.round);else{let bird=s.taken.findIndex(h=>h.some(c=>c.s==='S'&&c.r===12));if(bird>=0)showGameEvent('bird',seats[bird].name,s.round)}}} }
+
+function showGameEvent(kind,name,round){
+  let key=room+'|'+round+'|'+kind+'|'+name;if(lastEventKey===key)return;lastEventKey=key;
+  let o=$('eventOverlay');o.classList.remove('hidden','hogMoment');
+  if(kind==='hog'){o.classList.add('hogMoment');$('eventEmoji').textContent='🐷';$('eventTitle').textContent='WHOLE HOG!';$('eventText').textContent=name+' took all 119 points!';$('eventSub').textContent='BEAT DE TABLE! • Shame Board updated';}
+  else{$('eventEmoji').textContent='🐦';$('eventTitle').textContent='THE BIRD!';$('eventText').textContent=name+' caught the Q♠';$('eventSub').textContent=name+' deals the next round • Shame Board updated';}
+  clearTimeout(eventTimer);eventTimer=setTimeout(()=>o.classList.add('hidden'),kind==='hog'?4200:2600);
+}
+function renderShame(s,seats){
+  let hogMax=Math.max(...s.hogs),birdMax=Math.max(...s.birds);
+  let hogLeaders=hogMax?seats.filter((_,i)=>s.hogs[i]===hogMax).map(x=>esc(x.name)).join(' & '):'Nobody yet';
+  let birdLeaders=birdMax?seats.filter((_,i)=>s.birds[i]===birdMax).map(x=>esc(x.name)).join(' & '):'Nobody yet';
+  $('shame').innerHTML='<div class="shameGrid">'+
+    '<div class="shameBox"><b>🐷 Whole Hogs</b>'+seats.map((x,i)=>esc(x.name)+': <strong>'+s.hogs[i]+'</strong>').join('<br>')+'</div>'+
+    '<div class="shameBox"><b>🐦 Birds</b>'+seats.map((x,i)=>esc(x.name)+': <strong>'+s.birds[i]+'</strong>').join('<br>')+'</div>'+
+    '</div><div class="shameLeaders">🐷 '+hogLeaders+(hogMax?' ('+hogMax+')':'')+' &nbsp; • &nbsp; 🐦 '+birdLeaders+(birdMax?' ('+birdMax+')':'')+'</div>';
+}
+
 function resetPassActivity(){if(!room||mySeat<0)return;db.ref('rooms/'+room+'/state/passActivity/'+mySeat).set(Date.now()).catch(()=>{})}
 async function commitPass(){let s=normalizeState(latest?.state);if(!s||s.phase!=='pass'||selected.length!==3||s.passes?.[mySeat])return;let cards=selected.map(i=>s.hands[mySeat][i]);selected=[];await db.ref('rooms/'+room+'/state/passes/'+mySeat).set(cards)}
 async function requestPlay(i){if(isHost)return applyPlay(mySeat,i);await db.ref('rooms/'+room+'/requests/'+pid).set({type:'play',p:mySeat,i,at:Date.now()})}
